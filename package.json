@@ -1,16 +1,19 @@
 {
   "name": "hirefree",
-  "version": "1.2.0",
-  "description": "HireFree job and resume platform with employer and admin dashboards",
+  "version": "2.0.0",
+  "description": "HireFree - Real Free Hire & Resume Platform",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "express": "^4.18.2",
-    "express-session": "^1.17.3",
-    "multer": "^1.4.5-lts.1",
-    "nodemailer": "^6.9.13"
+    "bcryptjs": "latest",
+    "express": "latest",
+    "express-session": "latest",
+    "multer": "latest",
+    "nodemailer": "latest"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

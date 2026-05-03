@@ -1,135 +1,33 @@
-let state = { tab: 'jobs', user: null, jobs: [], resumes: [], matches: [], dashboard: null };
-const $ = (s) => document.querySelector(s);
-const $$ = (s) => Array.from(document.querySelectorAll(s));
-
-async function api(url, opts = {}) {
-  const r = await fetch(url, opts);
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || 'Request failed');
-  return j;
-}
-function notice(msg, error = false) {
-  const n = $('#notice');
-  n.textContent = msg;
-  n.className = 'notice' + (error ? ' error' : '');
-  setTimeout(() => n.classList.add('hidden'), 4500);
-}
-function esc(v) { return String(v || '').replace(/[&<>"']/g, (m) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[m])); }
-function skills(arr) { return (arr || []).map((s) => `<span class="pill">${esc(s)}</span>`).join(''); }
-function jobArg(job) { return encodeURIComponent(JSON.stringify(job)); }
-function parseArg(s) { return JSON.parse(decodeURIComponent(s)); }
-
-function switchTab(id) {
-  state.tab = id;
-  $$('.tab[data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === id));
-  $$('.panel').forEach((p) => p.classList.toggle('active', p.id === id));
-  if (id === 'dashboard') loadDashboard(); else loadAll();
-}
-async function loadMe() { const { user } = await api('/api/me'); state.user = user; renderUser(); }
-function renderUser() {
-  const box = $('#userBox');
-  if (state.user) box.innerHTML = `Logged in: <b>${esc(state.user.email)}</b> <button onclick="logout()">Logout</button>`;
-  else box.innerHTML = `Not logged in. <button onclick="switchTab('login')">Login</button> to view contacts.`;
-}
-async function logout() { await api('/api/logout', { method:'POST' }); state.user = null; renderUser(); loadAll(); notice('Logged out.'); }
-function query() { return `q=${encodeURIComponent($('#searchInput').value.trim())}&city=${encodeURIComponent($('#citySelect').value)}`; }
-
-async function loadAll() {
-  try {
-    const [jobs, resumes, matches, cities] = await Promise.all([
-      api('/api/jobs?' + query()), api('/api/resumes?' + query()),
-      api('/api/matches?city=' + encodeURIComponent($('#citySelect').value)), api('/api/cities')
-    ]);
-    state.jobs = jobs.jobs || []; state.resumes = resumes.resumes || []; state.matches = matches.matches || [];
-    renderCities(cities.cities || []); renderCounts(); renderJobs(); renderResumes(); renderMatches();
-  } catch (e) { notice(e.message, true); }
-}
-function renderCities(cities) {
-  const sel = $('#citySelect'); const old = sel.value;
-  sel.innerHTML = '<option value="">All cities</option>' + cities.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
-  sel.value = old;
-}
-function renderCounts() { $('#jobCount').textContent = state.jobs.length; $('#resumeCount').textContent = state.resumes.length; $('#matchCount').textContent = state.matches.length; }
-
-function renderJobs() {
-  const grid = $('#jobsGrid');
-  if (!state.jobs.length) { grid.innerHTML = '<p>No jobs found.</p>'; return; }
-  grid.innerHTML = state.jobs.map((j) => `
-    <article class="card job-card">
-      <div class="card-top"><h3>${esc(j.title)}</h3><span class="status-badge">Hiring</span></div>
-      <div class="meta"><span>${esc(j.company)}</span><span>•</span><span>${esc(j.city)}, ${esc(j.province)}</span><span>•</span><span>${esc(j.jobType || 'Full-time')}</span></div>
-      <div class="meta salary"><b>${esc(j.salary || 'Salary not listed')}</b></div>
-      <p class="desc">${esc(j.description || '').slice(0, 160)}${(j.description || '').length > 160 ? '...' : ''}</p>
-      <div class="skills">${skills(j.skills)}</div>
-      <div class="contact">Contact: ${j.contactEmail && !String(j.contactEmail).includes('Login') ? `<a href="mailto:${esc(j.contactEmail)}">${esc(j.contactEmail)}</a>` : esc(j.contactEmail || 'Login to view contact')}</div>
-      <button class="secondary-btn" onclick="viewJobDetail('${jobArg(j)}')">View Details</button>
-      <button class="primary-btn" onclick="openApplyModal('${jobArg(j)}')">Apply for this job</button>
-    </article>`).join('');
-}
-function renderResumes() {
-  const grid = $('#resumesGrid');
-  if (!state.resumes.length) { grid.innerHTML = '<p>No resumes found.</p>'; return; }
-  grid.innerHTML = state.resumes.map((r) => `
-    <article class="card"><h3>${esc(r.candidateName)}</h3>
-      <div class="meta"><span>${esc(r.targetPosition)}</span><span>•</span><span>${esc(r.city)}, ${esc(r.province)}</span></div>
-      <p class="desc">${esc(r.summary)}</p><div class="skills">${skills(r.skills)}</div>
-      <div class="contact">Contact: ${esc(r.contactEmail)} ${r.fileUrl ? `<br><a href="${esc(r.fileUrl)}" target="_blank">Open resume file</a>` : ''}</div>
-    </article>`).join('');
-}
-function renderMatches() {
-  const grid = $('#matchesGrid');
-  if (!state.matches.length) { grid.innerHTML = '<p>No matches yet.</p>'; return; }
-  grid.innerHTML = state.matches.map((m) => `
-    <article class="card"><div class="score">${esc(m.score)}%</div><p class="eyebrow">Auto Match</p>
-      <div class="mini-card"><b>Job: ${esc(m.job.title)}</b><span>${esc(m.job.company)} · ${esc(m.job.city)}, ${esc(m.job.province)}</span></div>
-      <div class="mini-card"><b>Candidate: ${esc(m.resume.candidateName)}</b><span>${esc(m.resume.targetPosition)} · ${esc(m.resume.city)}, ${esc(m.resume.province)}</span></div>
-      <p class="desc">Matched skills:</p><div class="skills">${skills(m.commonSkills)}</div>
-    </article>`).join('');
-}
-
-function viewJobDetail(encodedJob) {
-  const job = typeof encodedJob === 'string' ? parseArg(encodedJob) : encodedJob;
-  const modal = $('#jobDetailModal'); const content = $('#jobDetailContent');
-  content.innerHTML = `
-    <div class="detail-header"><h2>${esc(job.title)}</h2><p>${esc(job.company)} · ${esc(job.city)}, ${esc(job.province)}</p></div>
-    <div class="detail-section"><p><b>Job Type:</b> ${esc(job.jobType || 'Full-time')}</p><p><b>Salary:</b> ${esc(job.salary || 'Salary not listed')}</p></div>
-    <div class="detail-section"><h3>Job Description</h3><p>${esc(job.description || 'No description provided.')}</p></div>
-    <div class="detail-section"><h3>Required Skills</h3><div class="skills">${skills(job.skills)}</div></div>
-    <div class="detail-section"><h3>Contact</h3>${job.contactEmail && !String(job.contactEmail).includes('Login') ? `<a href="mailto:${esc(job.contactEmail)}">${esc(job.contactEmail)}</a>` : `<p>${esc(job.contactEmail || 'Login to view contact')}</p>`}</div>
-    <div class="modal-footer"><button class="secondary-btn" onclick="closeJobDetail()">Close</button><button class="primary-btn" onclick="closeJobDetail(); openApplyModal('${jobArg(job)}')">Apply for this job</button></div>`;
-  modal.classList.remove('hidden');
-}
-function closeJobDetail() { $('#jobDetailModal').classList.add('hidden'); }
-function openApplyModal(encodedJob) {
-  const job = typeof encodedJob === 'string' ? parseArg(encodedJob) : encodedJob;
-  if (!state.user) { notice('Please login first before applying.', true); switchTab('login'); return; }
-  const modal = $('#applyModal');
-  modal.innerHTML = `<div class="modal-content apply-modal"><button class="close-btn" onclick="closeApplyModal()">×</button><h2>Apply for this job</h2><p class="modal-subtitle">${esc(job.title)} · ${esc(job.company)} · ${esc(job.city)}, ${esc(job.province)}</p>
-    <form id="applicationForm" class="apply-form"><input type="hidden" name="jobId" value="${esc(job.id)}" />
-      <label>Your name<input name="name" required value="${esc(state.user.name || '')}" placeholder="Your name" /></label>
-      <label>Your email<input name="email" type="email" required value="${esc(state.user.email || '')}" placeholder="your@email.com" /></label>
-      <label>Short message<textarea name="message" rows="6" required>Hello ${esc(job.company)},\n\nI would like to apply for the ${esc(job.title)} position. Please find my resume attached/link below.\n\nThank you.</textarea></label>
-      <label>Upload resume: PDF/DOC/DOCX, max 5MB<input name="resumeFile" type="file" accept=".pdf,.doc,.docx" /></label>
-      <div class="modal-footer"><button type="button" class="secondary-btn" onclick="closeApplyModal()">Cancel</button><button type="submit" class="primary-btn">Submit Application</button></div>
-    </form></div>`;
-  modal.classList.remove('hidden');
-  $('#applicationForm').onsubmit = async (e) => { e.preventDefault(); try { await api('/api/applications', { method:'POST', body:new FormData(e.target) }); notice('Application submitted successfully.'); closeApplyModal(); loadAll(); } catch (err) { notice(err.message, true); } };
-}
-function closeApplyModal() { $('#applyModal').classList.add('hidden'); $('#applyModal').innerHTML = ''; }
-
-async function loadDashboard() { try { const data = await api('/api/employer-dashboard'); state.dashboard = data; renderDashboard(data); } catch (e) { notice('Please login as an employer to view dashboard.', true); switchTab('login'); } }
-function renderDashboard(data) {
-  const wrap = $('#dashboardContent'); const applications = data.applications || [];
-  wrap.innerHTML = `<div class="dashboard-summary"><div class="summary-card"><b>${esc(data.totals?.jobs || 0)}</b><span>My Jobs</span></div><div class="summary-card"><b>${esc(data.totals?.applications || 0)}</b><span>Applications</span></div><div class="summary-card"><b>${esc(data.totals?.newApplications || 0)}</b><span>New</span></div></div><h2>Applications</h2>${applications.length ? applications.map((a) => `<article class="card application-card"><div class="card-top"><h3>${esc(a.name)}</h3><span class="status-badge">${esc(a.status || 'new')}</span></div><p><b>Applied for:</b> ${esc(a.job?.title || 'Unknown job')}</p><p><b>Email:</b> <a href="mailto:${esc(a.email)}">${esc(a.email)}</a></p><p><b>Message:</b></p><p class="desc">${esc(a.message)}</p>${a.resumeFileUrl ? `<p><a href="${esc(a.resumeFileUrl)}" target="_blank">Open Resume</a></p>` : ''}<div class="dashboard-actions"><button onclick="updateApplicationStatus('${esc(a.id)}','reviewed')">Reviewed</button><button onclick="updateApplicationStatus('${esc(a.id)}','shortlisted')">Shortlisted</button><button onclick="updateApplicationStatus('${esc(a.id)}','rejected')">Rejected</button></div></article>`).join('') : '<p>No applications yet.</p>'}`;
-}
-async function updateApplicationStatus(id, status) { try { await api(`/api/applications/${id}/status`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ status }) }); notice('Application status updated.'); loadDashboard(); } catch (e) { notice(e.message, true); } }
-function formObj(form) { return Object.fromEntries(new FormData(form).entries()); }
-$$('.tab[data-tab]').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
-$('#refreshBtn').onclick = loadAll;
-$('#searchInput').addEventListener('input', () => loadAll());
-$('#citySelect').addEventListener('change', () => loadAll());
-$('#loginForm').onsubmit = async (e) => { e.preventDefault(); try { const data = formObj(e.target); const r = await api('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) }); state.user = r.user; renderUser(); notice('Login successful.'); switchTab('jobs'); } catch (err) { notice(err.message, true); } };
-$('#registerForm').onsubmit = async (e) => { e.preventDefault(); try { const data = formObj(e.target); const r = await api('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) }); state.user = r.user; renderUser(); notice('Account created.'); switchTab('jobs'); } catch (err) { notice(err.message, true); } };
-$('#jobForm').onsubmit = async (e) => { e.preventDefault(); try { const data = formObj(e.target); await api('/api/jobs', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) }); e.target.reset(); notice('Job published.'); switchTab('jobs'); } catch (err) { notice(err.message, true); if (err.message.includes('log in')) switchTab('login'); } };
-$('#resumeForm').onsubmit = async (e) => { e.preventDefault(); try { await api('/api/resumes', { method:'POST', body:new FormData(e.target) }); e.target.reset(); notice('Resume published.'); switchTab('resumes'); } catch (err) { notice(err.message, true); if (err.message.includes('log in')) switchTab('login'); } };
+let state={tab:'jobs',user:null,jobs:[],resumes:[],matches:[],dashboard:null};
+const $=s=>document.querySelector(s); const $$=s=>Array.from(document.querySelectorAll(s));
+async function api(url,opts={}){const r=await fetch(url,opts);const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Request failed');return j;}
+function notice(msg,error=false){const n=$('#notice');n.textContent=msg;n.className='notice'+(error?' error':'');setTimeout(()=>n.classList.add('hidden'),4500);}
+function esc(v){return String(v||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function skills(arr){return (arr||[]).map(s=>`<span class="pill">${esc(s)}</span>`).join('');}
+function jobArg(j){return encodeURIComponent(JSON.stringify(j));}
+function parseArg(s){return JSON.parse(decodeURIComponent(s));}
+function switchTab(id){state.tab=id;$$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));$$('.panel').forEach(p=>p.classList.toggle('active',p.id===id));id==='dashboard'?loadDashboard():loadAll();}
+async function loadMe(){const {user}=await api('/api/me');state.user=user;renderUser();}
+function renderUser(){const b=$('#userBox'); b.innerHTML=state.user?`Logged in: <b>${esc(state.user.email)}</b> <button onclick="logout()">Logout</button>`:`<button onclick="switchTab('login')">Login / Register</button>`;}
+async function logout(){await api('/api/logout',{method:'POST'});state.user=null;renderUser();loadAll();notice('Logged out.');}
+function query(){return `q=${encodeURIComponent($('#searchInput').value.trim())}&city=${encodeURIComponent($('#citySelect').value)}`;}
+async function loadAll(){try{const [jobs,resumes,matches,cities]=await Promise.all([api('/api/jobs?'+query()),api('/api/resumes?'+query()),api('/api/matches?city='+encodeURIComponent($('#citySelect').value)),api('/api/cities')]);state.jobs=jobs.jobs||[];state.resumes=resumes.resumes||[];state.matches=matches.matches||[];renderCities(cities.cities||[]);renderCounts();renderJobs();renderResumes();renderMatches();}catch(e){notice(e.message,true);}}
+function renderCities(cities){const sel=$('#citySelect');const old=sel.value;sel.innerHTML='<option value="">All cities</option>'+cities.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');sel.value=old;}
+function renderCounts(){$('#jobCount').textContent=state.jobs.length;$('#resumeCount').textContent=state.resumes.length;$('#matchCount').textContent=state.matches.length;}
+function renderJobs(){const g=$('#jobsGrid');g.innerHTML=state.jobs.length?state.jobs.map(j=>`<article class="card job-card"><div class="card-top"><h3>${esc(j.title)}</h3><span class="status-badge">Hiring</span></div><div class="meta"><span>${esc(j.company)}</span><span>•</span><span>${esc(j.city)}, ${esc(j.province)}</span><span>•</span><span>${esc(j.jobType||'Full-time')}</span></div><div class="meta salary"><b>${esc(j.salary||'Salary not listed')}</b></div><p class="desc">${esc(j.description||'').slice(0,160)}${(j.description||'').length>160?'...':''}</p><div class="skills">${skills(j.skills)}</div><div class="contact">Contact: ${j.contactEmail&&!String(j.contactEmail).includes('Login')?`<a href="mailto:${esc(j.contactEmail)}">${esc(j.contactEmail)}</a>`:esc(j.contactEmail||'Login to view contact')}</div><button class="secondary-btn" onclick="viewJobDetail('${jobArg(j)}')">View Details</button><button class="primary-btn" onclick="openApplyModal('${jobArg(j)}')">Apply for this job</button></article>`).join(''):'<p>No jobs found.</p>';}
+function renderResumes(){const g=$('#resumesGrid');g.innerHTML=state.resumes.length?state.resumes.map(r=>`<article class="card"><h3>${esc(r.candidateName)}</h3><div class="meta"><span>${esc(r.targetPosition)}</span><span>•</span><span>${esc(r.city)}, ${esc(r.province)}</span></div><p class="desc">${esc(r.summary)}</p><div class="skills">${skills(r.skills)}</div><div class="contact">Contact: ${esc(r.contactEmail)} ${r.fileUrl?`<br><a href="${esc(r.fileUrl)}" target="_blank">Open resume file</a>`:''}</div></article>`).join(''):'<p>No resumes found.</p>';}
+function renderMatches(){const g=$('#matchesGrid');g.innerHTML=state.matches.length?state.matches.map(m=>`<article class="card"><div class="score">${esc(m.score)}%</div><p class="eyebrow">Auto Match</p><div class="mini-card"><b>Job: ${esc(m.job.title)}</b><span>${esc(m.job.company)} · ${esc(m.job.city)}, ${esc(m.job.province)}</span></div><div class="mini-card"><b>Candidate: ${esc(m.resume.candidateName)}</b><span>${esc(m.resume.targetPosition)} · ${esc(m.resume.city)}, ${esc(m.resume.province)}</span></div><p class="desc">Matched skills:</p><div class="skills">${skills(m.commonSkills)}</div></article>`).join(''):'<p>No matches yet.</p>';}
+function viewJobDetail(arg){const job=parseArg(arg);$('#jobDetailContent').innerHTML=`<div class="detail-header"><h2>${esc(job.title)}</h2><p>${esc(job.company)} · ${esc(job.city)}, ${esc(job.province)}</p></div><div class="detail-section"><p><b>Job Type:</b> ${esc(job.jobType||'Full-time')}</p><p><b>Salary:</b> ${esc(job.salary||'Salary not listed')}</p></div><div class="detail-section"><h3>Job Description</h3><p>${esc(job.description||'No description provided.')}</p></div><div class="detail-section"><h3>Required Skills</h3><div class="skills">${skills(job.skills)}</div></div><div class="detail-section"><h3>Contact</h3>${job.contactEmail&&!String(job.contactEmail).includes('Login')?`<a href="mailto:${esc(job.contactEmail)}">${esc(job.contactEmail)}</a>`:`<p>${esc(job.contactEmail||'Login to view contact')}</p>`}</div><div class="modal-footer"><button class="secondary-btn" onclick="closeJobDetail()">Close</button><button class="primary-btn" onclick="closeJobDetail(); openApplyModal('${jobArg(job)}')">Apply for this job</button></div>`;$('#jobDetailModal').classList.remove('hidden');}
+function closeJobDetail(){$('#jobDetailModal').classList.add('hidden');}
+function openApplyModal(arg){const job=parseArg(arg); if(!state.user){notice('Please login or create a free account to apply.',true);switchTab('login');return;} const m=$('#applyModal');m.innerHTML=`<div class="modal-content apply-modal"><button class="close-btn" onclick="closeApplyModal()">×</button><h2>Apply for this job</h2><p class="modal-subtitle">${esc(job.title)} · ${esc(job.company)} · ${esc(job.city)}, ${esc(job.province)}</p><form id="applicationForm" class="apply-form"><input type="hidden" name="jobId" value="${esc(job.id)}"/><label>Your name<input name="name" required value="${esc(state.user.name||'')}"/></label><label>Your email<input name="email" type="email" required value="${esc(state.user.email||'')}"/></label><label>Short message<textarea name="message" rows="6" required>Hello ${esc(job.company)},\n\nI would like to apply for the ${esc(job.title)} position. Please find my resume attached/link below.\n\nThank you.</textarea></label><label>Upload resume: PDF/DOC/DOCX, max 5MB<input name="resumeFile" type="file" accept=".pdf,.doc,.docx"/></label><div class="modal-footer"><button type="button" class="secondary-btn" onclick="closeApplyModal()">Cancel</button><button type="submit" class="primary-btn">Submit Application</button></div></form></div>`;m.classList.remove('hidden');$('#applicationForm').onsubmit=async e=>{e.preventDefault();try{await api('/api/applications',{method:'POST',body:new FormData(e.target)});notice('Application submitted successfully.');closeApplyModal();loadAll();}catch(err){notice(err.message,true);}};}
+function closeApplyModal(){$('#applyModal').classList.add('hidden');$('#applyModal').innerHTML='';}
+async function loadDashboard(){try{const d=await api('/api/employer-dashboard');renderDashboard(d);}catch(e){notice('Please login as an employer to view dashboard.',true);switchTab('login');}}
+function renderDashboard(d){const apps=d.applications||[];$('#dashboardContent').innerHTML=`<div class="dashboard-summary"><div class="summary-card"><b>${esc(d.totals?.jobs||0)}</b><span>My Jobs</span></div><div class="summary-card"><b>${esc(d.totals?.applications||0)}</b><span>Applications</span></div><div class="summary-card"><b>${esc(d.totals?.newApplications||0)}</b><span>New</span></div></div><h2>Applications</h2>${apps.length?apps.map(a=>`<article class="card application-card"><div class="card-top"><h3>${esc(a.name)}</h3><span class="status-badge">${esc(a.status||'new')}</span></div><p><b>Applied for:</b> ${esc(a.job?.title||'Unknown job')}</p><p><b>Email:</b> <a href="mailto:${esc(a.email)}">${esc(a.email)}</a></p><p><b>Message:</b></p><p class="desc">${esc(a.message)}</p>${a.resumeFileUrl?`<p><a href="${esc(a.resumeFileUrl)}" target="_blank">Open Resume</a></p>`:''}<div class="dashboard-actions"><button onclick="updateApplicationStatus('${esc(a.id)}','reviewed')">Reviewed</button><button onclick="updateApplicationStatus('${esc(a.id)}','shortlisted')">Shortlisted</button><button onclick="updateApplicationStatus('${esc(a.id)}','rejected')">Rejected</button></div></article>`).join(''):'<p>No applications yet.</p>'}`;}
+async function updateApplicationStatus(id,status){try{await api(`/api/applications/${id}/status`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});notice('Application status updated.');loadDashboard();}catch(e){notice(e.message,true);}}
+function formObj(f){return Object.fromEntries(new FormData(f).entries());}
+$$('.tab').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));$('#refreshBtn').onclick=loadAll;$('#searchInput').addEventListener('input',()=>loadAll());$('#citySelect').addEventListener('change',()=>loadAll());
+$('#loginForm').onsubmit=async e=>{e.preventDefault();try{const r=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(formObj(e.target))});state.user=r.user;renderUser();notice('Login successful.');switchTab('jobs');}catch(err){notice(err.message,true);}};
+$('#registerForm').onsubmit=async e=>{e.preventDefault();try{const r=await api('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(formObj(e.target))});state.user=r.user;renderUser();notice('Account created.');switchTab('jobs');}catch(err){notice(err.message,true);}};
+$('#jobForm').onsubmit=async e=>{e.preventDefault();try{await api('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(formObj(e.target))});e.target.reset();notice('Job published.');switchTab('jobs');}catch(err){notice(err.message,true);if(err.message.includes('log in'))switchTab('login');}};
+$('#resumeForm').onsubmit=async e=>{e.preventDefault();try{await api('/api/resumes',{method:'POST',body:new FormData(e.target)});e.target.reset();notice('Resume published.');switchTab('resumes');}catch(err){notice(err.message,true);if(err.message.includes('log in'))switchTab('login');}};
 loadMe().then(loadAll);

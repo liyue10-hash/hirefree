@@ -1,22 +1,18 @@
-# HireFree Admin Dashboard Version
+# HireFree
 
-## Run locally
-1. Install Node.js LTS.
-2. Double-click `start-windows.bat` on Windows, or run `./start-mac-linux.sh` on Mac/Linux.
-3. Open http://localhost:3000
+Real Free Hire & Resume Platform.
 
-## Admin Dashboard
-Open: http://localhost:3000/admin.html
+## Local run
+```bash
+npm install
+npm start
+```
 
-Default admin login:
-- Email: hr@ameleco.com
-- Password: admin123
+Open http://localhost:3000
 
-For production, set Render environment variables:
-- ADMIN_EMAIL
-- ADMIN_PASSWORD
-- SESSION_SECRET
+## Render
+Build command: `npm install`
+Start command: `node server.js`
 
-## Deploy on Render
-Build Command: `npm install`
-Start Command: `node server.js`
+Admin: `/admin.html`
+Default admin: `hr@ameleco.com` / `admin123`
