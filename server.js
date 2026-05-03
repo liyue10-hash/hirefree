@@ -2,6 +2,8 @@ const express = require('express');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
+const nodemailer = require('nodemailer');
+const twilio = require('twilio');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -86,6 +88,63 @@ function matchScore(job,resume){
 function isAdmin(req){ return req.session.admin === true; }
 function requireAdmin(req,res,next){ if(!isAdmin(req)) return res.status(401).json({error:'Admin login required'}); next(); }
 
+function maskEmail(email){
+  const v=String(email||''); const [name,domain]=v.split('@');
+  if(!domain) return 'not configured';
+  return `${name.slice(0,2)}***@${domain}`;
+}
+function maskPhone(phone){
+  const v=String(phone||'').replace(/\D/g,'');
+  return v ? `***-***-${v.slice(-4)}` : 'not configured';
+}
+function generateCode(){ return String(Math.floor(100000 + Math.random()*900000)); }
+function getAdminEmail(){ return normalize(process.env.ADMIN_EMAIL || 'hr@ameleco.com'); }
+function getAdminRecoveryEmail(){ return clean(process.env.ADMIN_RECOVERY_EMAIL || process.env.ADMIN_EMAIL || 'hr@ameleco.com'); }
+function getAdminRecoveryPhone(){ return clean(process.env.ADMIN_RECOVERY_PHONE || '+16043065431'); }
+function emailConfigured(){ return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS); }
+function smsConfigured(){ return !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER); }
+async function sendEmailCode(to, code){
+  if(!emailConfigured()) {
+    console.log('[HireFree Admin Recovery] Email code:', code, 'Email provider not configured.');
+    return {sent:false, reason:'Email provider not configured'};
+  }
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: String(process.env.SMTP_SECURE || '').toLowerCase() === 'true',
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+  });
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    to,
+    subject: 'HireFree Admin Password Recovery Code',
+    text: `Your HireFree admin email verification code is: ${code}. It expires in 10 minutes.`
+  });
+  return {sent:true};
+}
+async function sendSmsCode(to, code){
+  if(!smsConfigured()) {
+    console.log('[HireFree Admin Recovery] SMS code:', code, 'SMS provider not configured.');
+    return {sent:false, reason:'SMS provider not configured'};
+  }
+  const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+  await client.messages.create({
+    from: process.env.TWILIO_FROM_NUMBER,
+    to,
+    body: `Your HireFree admin SMS verification code is: ${code}. It expires in 10 minutes.`
+  });
+  return {sent:true};
+}
+async function getAdminPasswordHash(db){
+  db.adminSettings ||= {};
+  return db.adminSettings.passwordHash || '';
+}
+async function verifyAdminPassword(db, password){
+  const storedHash = await getAdminPasswordHash(db);
+  if(storedHash) return bcrypt.compare(String(password||''), storedHash);
+  return String(password||'') === String(process.env.ADMIN_PASSWORD || 'admin123');
+}
+
 app.use(express.json());
 app.use(express.urlencoded({ extended:true }));
 app.use(session({ secret:process.env.SESSION_SECRET || 'hirefree-change-this-secret', resave:false, saveUninitialized:false }));
@@ -162,7 +221,76 @@ app.post('/api/applications/:id/status', requireLogin, (req,res)=>{
 });
 app.post('/api/password-request',(req,res)=>{ const db=readDb(); const email=normalize(req.body.email); if(!email) return res.status(400).json({error:'Email required'}); db.passwordRequests.push({id:id(), email, status:'new', createdAt:now()}); writeDb(db); res.json({ok:true}); });
 
-app.post('/api/admin/login',(req,res)=>{ const ok=normalize(req.body.email)===normalize(process.env.ADMIN_EMAIL||'hr@ameleco.com') && String(req.body.password||'')===String(process.env.ADMIN_PASSWORD||'admin123'); if(!ok) return res.status(401).json({error:'Invalid admin login'}); req.session.admin=true; res.json({ok:true}); });
+app.post('/api/admin/login', async (req,res)=>{
+  const db=readDb();
+  const emailOk = normalize(req.body.email) === getAdminEmail();
+  const passwordOk = await verifyAdminPassword(db, req.body.password);
+  if(!emailOk || !passwordOk) return res.status(401).json({error:'Invalid admin login'});
+  req.session.admin=true;
+  res.json({ok:true});
+});
+
+app.get('/api/admin-recovery/config',(req,res)=>{
+  res.json({
+    email: maskEmail(getAdminRecoveryEmail()),
+    phone: maskPhone(getAdminRecoveryPhone()),
+    emailProviderConfigured: emailConfigured(),
+    smsProviderConfigured: smsConfigured()
+  });
+});
+
+app.post('/api/admin-recovery/request', async (req,res)=>{
+  const db=readDb();
+  db.adminRecoveryRequests ||= [];
+  const emailCode=generateCode();
+  const smsCode=generateCode();
+  const request={
+    id:id(),
+    email:getAdminRecoveryEmail(),
+    phone:getAdminRecoveryPhone(),
+    emailCodeHash:await bcrypt.hash(emailCode,10),
+    smsCodeHash:await bcrypt.hash(smsCode,10),
+    expiresAt:new Date(Date.now()+10*60*1000).toISOString(),
+    used:false,
+    createdAt:now()
+  };
+  db.adminRecoveryRequests.push(request);
+  writeDb(db);
+  let emailResult, smsResult;
+  try { emailResult = await sendEmailCode(request.email, emailCode); } catch(e) { emailResult={sent:false, reason:e.message}; }
+  try { smsResult = await sendSmsCode(request.phone, smsCode); } catch(e) { smsResult={sent:false, reason:e.message}; }
+  if(!emailResult.sent || !smsResult.sent) {
+    return res.status(500).json({
+      error:'Verification code could not be sent. Please configure SMTP and Twilio in Render Environment Variables.',
+      emailSent:!!emailResult.sent,
+      smsSent:!!smsResult.sent,
+      emailReason:emailResult.reason || '',
+      smsReason:smsResult.reason || ''
+    });
+  }
+  res.json({ok:true, requestId:request.id, email:maskEmail(request.email), phone:maskPhone(request.phone)});
+});
+
+app.post('/api/admin-recovery/verify', async (req,res)=>{
+  const db=readDb();
+  db.adminRecoveryRequests ||= [];
+  db.adminSettings ||= {};
+  const request=db.adminRecoveryRequests.find(r=>r.id===req.body.requestId && !r.used);
+  if(!request) return res.status(400).json({error:'Invalid or expired recovery request.'});
+  if(new Date(request.expiresAt).getTime() < Date.now()) return res.status(400).json({error:'Verification codes expired. Please request new codes.'});
+  const emailOk=await bcrypt.compare(String(req.body.emailCode||''), request.emailCodeHash);
+  const smsOk=await bcrypt.compare(String(req.body.smsCode||''), request.smsCodeHash);
+  if(!emailOk || !smsOk) return res.status(400).json({error:'Email code or SMS code is incorrect.'});
+  const newPassword=String(req.body.newPassword||'');
+  if(newPassword.length<8) return res.status(400).json({error:'New admin password must be at least 8 characters.'});
+  db.adminSettings.passwordHash=await bcrypt.hash(newPassword,10);
+  db.adminSettings.updatedAt=now();
+  request.used=true;
+  request.usedAt=now();
+  writeDb(db);
+  res.json({ok:true});
+});
+
 app.post('/api/admin/logout',(req,res)=>{ req.session.admin=false; res.json({ok:true}); });
 app.get('/api/admin/overview', requireAdmin, (req,res)=>{ const db=readDb(); res.json({jobs:db.jobs, resumes:db.resumes, applications:db.applications.map(a=>({...a, job:db.jobs.find(j=>j.id===a.jobId)||null})), users:db.users.map(publicUser), passwordRequests:db.passwordRequests, totals:{jobs:db.jobs.length,resumes:db.resumes.length,applications:db.applications.length,users:db.users.length,passwordRequests:db.passwordRequests.length}}); });
 app.delete('/api/admin/jobs/:id', requireAdmin, (req,res)=>{ const db=readDb(); db.jobs=db.jobs.filter(j=>j.id!==req.params.id); db.applications=db.applications.filter(a=>a.jobId!==req.params.id); writeDb(db); res.json({ok:true}); });

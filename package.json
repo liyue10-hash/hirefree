@@ -11,7 +11,8 @@
     "express": "latest",
     "express-session": "latest",
     "multer": "latest",
-    "nodemailer": "latest"
+    "nodemailer": "latest",
+    "twilio": "latest"
   },
   "engines": {
     "node": ">=18"
