@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HireFree Admin</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="container admin-shell">
+    <div class="admin-header">
+      <div class="brand">
+        <img class="brand-logo" src="/logo-mascot.png" alt="HireFree logo" />
+        <span>HireFree Admin</span>
+      </div>
+      <div><a class="tab" href="/">Back to Website</a></div>
+    </div>
+
+    <section id="adminNotice" class="notice hidden"></section>
+
+    <section id="adminLoginBox" class="form-card admin-login">
+      <h2>Admin Login</h2>
+      <p class="admin-muted">Default: hr@ameleco.com / admin123. Change this in Render environment variables later.</p>
+      <label>Email<input id="adminEmail" type="email" value="hr@ameleco.com" /></label>
+      <label>Password<input id="adminPassword" type="password" value="admin123" /></label>
+      <button onclick="adminLogin()">Login</button>
+    </section>
+
+    <section id="adminPanel" class="hidden">
+      <div class="admin-summary">
+        <div class="summary-card"><b id="totalJobs">0</b><span>Jobs</span></div>
+        <div class="summary-card"><b id="totalResumes">0</b><span>Resumes</span></div>
+        <div class="summary-card"><b id="totalApplications">0</b><span>Applications</span></div>
+        <div class="summary-card"><b id="totalUsers">0</b><span>Users</span></div>
+        <div class="summary-card"><b id="totalPasswordRequests">0</b><span>Password Requests</span></div>
+      </div>
+
+      <section class="tabs" style="margin-top:20px;">
+        <button class="tab active" data-admin-tab="jobs" onclick="showAdminTab('jobs')">Jobs</button>
+        <button class="tab" data-admin-tab="resumes" onclick="showAdminTab('resumes')">Resumes</button>
+        <button class="tab" data-admin-tab="applications" onclick="showAdminTab('applications')">Applications</button>
+        <button class="tab" data-admin-tab="users" onclick="showAdminTab('users')">Users</button>
+        <button class="tab" data-admin-tab="passwordRequests" onclick="showAdminTab('passwordRequests')">Password Requests</button>
+        <button class="tab" onclick="loadAdminData()">Refresh</button>
+        <button class="tab" onclick="adminLogout()">Logout</button>
+      </section>
+
+      <section id="adminJobs" class="admin-table"></section>
+      <section id="adminResumes" class="admin-table hidden"></section>
+      <section id="adminApplications" class="admin-table hidden"></section>
+      <section id="adminUsers" class="admin-table hidden"></section>
+      <section id="adminPasswordRequests" class="admin-table hidden"></section>
+    </section>
+  </main>
+
+  <div id="resumeDetailModal" class="modal hidden">
+    <div class="modal-content detail-modal">
+      <button class="close-btn" onclick="closeResumeDetail()">×</button>
+      <div id="resumeDetailContent"></div>
+    </div>
+  </div>
+
+<script>
+let adminState = { jobs: [], resumes: [], applications: [], users: [], passwordResetRequests: [] };
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+function esc(v){ return String(v || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function adminNotice(msg, error=false){ const n=$('#adminNotice'); n.textContent=msg; n.className='notice'+(error?' error':''); setTimeout(()=>n.classList.add('hidden'),4500); }
+async function adminApi(url, opts={}){ const r=await fetch(url,opts); const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error || 'Request failed'); return j; }
+async function adminLogin(){
+  try{
+    await adminApi('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:$('#adminEmail').value,password:$('#adminPassword').value})});
+    $('#adminLoginBox').classList.add('hidden'); $('#adminPanel').classList.remove('hidden');
+    await loadAdminData(); adminNotice('Admin login successful.');
+  }catch(e){ adminNotice(e.message,true); }
+}
+async function adminLogout(){ await adminApi('/api/admin/logout',{method:'POST'}); location.reload(); }
+async function loadAdminData(){
+  try{
+    const d = await adminApi('/api/admin/data');
+    adminState = d;
+    $('#totalJobs').textContent=d.totals.jobs; $('#totalResumes').textContent=d.totals.resumes; $('#totalApplications').textContent=d.totals.applications; $('#totalUsers').textContent=d.totals.users; $('#totalPasswordRequests').textContent=d.totals.passwordResetRequests || 0;
+    renderJobs(); renderResumes(); renderApplications(); renderUsers(); renderPasswordRequests();
+  }catch(e){ adminNotice(e.message,true); }
+}
+function showAdminTab(tab){
+  ['Jobs','Resumes','Applications','Users','PasswordRequests'].forEach(name => $('#admin'+name).classList.add('hidden'));
+  $$('[data-admin-tab]').forEach(b => b.classList.toggle('active', b.dataset.adminTab === tab));
+  const map = { jobs:'Jobs', resumes:'Resumes', applications:'Applications', users:'Users', passwordRequests:'PasswordRequests' };
+  $('#admin'+map[tab]).classList.remove('hidden');
+}
+function renderJobs(){
+  $('#adminJobs').innerHTML = adminState.jobs.length ? adminState.jobs.map(j=>`<article class="admin-record"><div class="card-top"><h3>${esc(j.title)}</h3><span class="status-badge">${esc(j.status||'active')}</span></div><p><b>${esc(j.company)}</b> · ${esc(j.city)}, ${esc(j.province)} · ${esc(j.jobType||'')}</p><p class="admin-muted">Salary: ${esc(j.salary||'')} · Contact: ${esc(j.contactEmail||'')}</p><p>${esc(j.description||'')}</p><div class="skills">${(j.skills||[]).map(s=>`<span class="pill">${esc(s)}</span>`).join('')}</div><div class="admin-actions"><button class="small-btn" onclick="setJobStatus('${esc(j.id)}','active')">Active</button><button class="small-btn" onclick="setJobStatus('${esc(j.id)}','hidden')">Hide</button><button class="small-btn" onclick="setJobStatus('${esc(j.id)}','featured')">Featured</button><button class="danger-btn" onclick="deleteJob('${esc(j.id)}')">Delete Job</button></div></article>`).join('') : '<p>No jobs.</p>';
+}
+function renderResumes(){
+  $('#adminResumes').innerHTML = adminState.resumes.length ? adminState.resumes.map(r=>`<article class="admin-record"><div class="card-top"><h3>${esc(r.candidateName)}</h3><span class="status-badge">${esc(r.status||'active')}</span></div><p><b>${esc(r.targetPosition)}</b> · ${esc(r.city)}, ${esc(r.province)}</p><p class="admin-muted">Email: ${esc(r.contactEmail||'')}</p><p>${esc((r.summary||'').slice(0,180))}${(r.summary||'').length>180?'...':''}</p><div class="admin-actions"><button class="small-btn" onclick="viewResumeDetail('${esc(r.id)}')">View Details</button>${r.fileUrl?`<a class="small-btn link-btn" href="${esc(r.fileUrl)}" target="_blank">Open File</a>`:''}<button class="danger-btn" onclick="deleteResume('${esc(r.id)}')">Delete Resume</button></div></article>`).join('') : '<p>No resumes.</p>';
+}
+function viewResumeDetail(id){
+  const r = adminState.resumes.find(x => x.id === id);
+  if(!r) return;
+  $('#resumeDetailContent').innerHTML = `
+    <div class="detail-header">
+      <h2>${esc(r.candidateName || 'Candidate')}</h2>
+      <p>${esc(r.targetPosition || '')} · ${esc(r.city || '')}, ${esc(r.province || '')}</p>
+    </div>
+    <div class="detail-section"><h3>Contact</h3><p><b>Email:</b> ${r.contactEmail ? `<a href="mailto:${esc(r.contactEmail)}">${esc(r.contactEmail)}</a>` : 'Not listed'}</p></div>
+    <div class="detail-section"><h3>Skills</h3><div class="skills">${(r.skills||[]).map(s=>`<span class="pill">${esc(s)}</span>`).join('') || '<p>No skills listed.</p>'}</div></div>
+    <div class="detail-section"><h3>Summary</h3><p>${esc(r.summary || 'No summary provided.')}</p></div>
+    <div class="detail-section"><h3>Resume File</h3>${r.fileUrl ? `<p><a class="small-btn link-btn" href="${esc(r.fileUrl)}" target="_blank">Open Resume File</a></p>` : '<p>No uploaded file.</p>'}</div>
+    <div class="detail-section"><h3>Record Info</h3><p><b>Status:</b> ${esc(r.status||'active')}</p><p><b>Created:</b> ${esc(r.createdAt||'')}</p><p><b>ID:</b> ${esc(r.id||'')}</p></div>
+    <div class="modal-footer"><button class="secondary-btn" onclick="closeResumeDetail()">Close</button><button class="danger-btn" onclick="closeResumeDetail(); deleteResume('${esc(r.id)}')">Delete Resume</button></div>
+  `;
+  $('#resumeDetailModal').classList.remove('hidden');
+}
+function closeResumeDetail(){ $('#resumeDetailModal').classList.add('hidden'); }
+function renderApplications(){
+  $('#adminApplications').innerHTML = adminState.applications.length ? adminState.applications.map(a=>`<article class="admin-record"><div class="card-top"><h3>${esc(a.name)}</h3><span class="status-badge">${esc(a.status||'new')}</span></div><p><b>Job:</b> ${esc(a.job?.title || 'Unknown')}</p><p class="admin-muted">Email: ${esc(a.email||'')} · Applied: ${esc(a.createdAt||'')}</p><p>${esc(a.message||'')}</p>${a.resumeFileUrl?`<p><a href="${esc(a.resumeFileUrl)}" target="_blank">Open resume</a></p>`:''}<div class="admin-actions"><button class="danger-btn" onclick="deleteApplication('${esc(a.id)}')">Delete Application</button></div></article>`).join('') : '<p>No applications.</p>';
+}
+function renderUsers(){
+  $('#adminUsers').innerHTML = adminState.users.length ? adminState.users.map(u=>`<article class="admin-record"><h3>${esc(u.name || u.email)}</h3><p>${esc(u.email)} · ${esc(u.role)} · ${esc(u.company||'')}</p><div class="admin-actions"><button class="small-btn" onclick="resetUserPassword('${esc(u.id)}','${esc(u.email)}')">Reset Password</button></div></article>`).join('') : '<p>No users.</p>';
+}
+function renderPasswordRequests(){
+  const requests = adminState.passwordResetRequests || [];
+  $('#adminPasswordRequests').innerHTML = requests.length ? requests.map(r=>`<article class="admin-record"><div class="card-top"><h3>${esc(r.email)}</h3><span class="status-badge">${esc(r.status||'new')}</span></div><p class="admin-muted">Requested: ${esc(r.createdAt||'')} · User ID: ${esc(r.userId || 'not found')}</p><div class="admin-actions">${r.userId ? `<button class="small-btn" onclick="resetUserPassword('${esc(r.userId)}','${esc(r.email)}')">Reset Password</button>` : ''}<button class="danger-btn" onclick="deletePasswordRequest('${esc(r.id)}')">Delete Request</button></div></article>`).join('') : '<p>No password reset requests.</p>';
+}
+async function resetUserPassword(userId, email){
+  const password = prompt('Enter new password for ' + email + ' (minimum 6 characters):');
+  if(!password) return;
+  await adminApi('/api/admin/users/'+userId+'/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password})});
+  adminNotice('Password reset for ' + email + '.');
+  loadAdminData();
+}
+async function deletePasswordRequest(id){
+  if(!confirm('Delete this password reset request?')) return;
+  await adminApi('/api/admin/password-reset-requests/'+id,{method:'DELETE'});
+  adminNotice('Password request deleted.');
+  loadAdminData();
+}
+async function deleteJob(id){ if(!confirm('Delete this job and its related applications?')) return; await adminApi('/api/admin/jobs/'+id,{method:'DELETE'}); adminNotice('Job deleted.'); loadAdminData(); }
+async function deleteResume(id){ if(!confirm('Delete this resume?')) return; await adminApi('/api/admin/resumes/'+id,{method:'DELETE'}); adminNotice('Resume deleted.'); loadAdminData(); }
+async function deleteApplication(id){ if(!confirm('Delete this application?')) return; await adminApi('/api/admin/applications/'+id,{method:'DELETE'}); adminNotice('Application deleted.'); loadAdminData(); }
+async function setJobStatus(id,status){ await adminApi('/api/admin/jobs/'+id+'/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})}); adminNotice('Job status updated.'); loadAdminData(); }
+</script>
+</body>
+</html>

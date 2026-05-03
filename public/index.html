@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HireFree</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="hero">
+    <nav class="nav">
+      <div class="brand">
+        <img class="brand-logo" src="/logo-mascot.png" alt="HireFree logo" />
+        <span>HireFree</span>
+      </div>
+      <div id="userBox" class="user-box"></div>
+    </nav>
+
+    <section class="hero-card">
+      <div>
+        <p class="eyebrow">Free Job & Resume Platform</p>
+        <h1>Employers post jobs for free. Job seekers post resumes for free. The system matches them automatically.</h1>
+        <p class="subtitle">Search by city, province, skills, and job keywords. Start as a local Canadian job platform, then expand into electrical, warehouse, construction, and more.</p>
+      </div>
+
+      <div class="hero-side">
+        <div class="hero-illustration-card">
+          <img class="hero-illustration" src="/logo-mascot.png" alt="Cute HireFree illustration" />
+        </div>
+        <div class="stats">
+          <div><b id="jobCount">0</b><span>Jobs</span></div>
+          <div><b id="resumeCount">0</b><span>Resumes</span></div>
+          <div><b id="matchCount">0</b><span>Matches</span></div>
+        </div>
+      </div>
+    </section>
+  </header>
+
+  <main class="container">
+    <section class="toolbar">
+      <input id="searchInput" placeholder="Search: electrical, sales, forklift, Calgary..." />
+      <select id="citySelect"><option value="">All cities</option></select>
+      <button id="refreshBtn">Refresh</button>
+    </section>
+
+    <section class="tabs">
+      <button class="tab active" data-tab="jobs">Jobs</button>
+      <button class="tab" data-tab="resumes">Resumes</button>
+      <button class="tab" data-tab="matches">Auto Match</button>
+      <button class="tab" data-tab="dashboard">Employer Dashboard</button>
+      <button class="tab" data-tab="postJob">Post Job</button>
+      <button class="tab" data-tab="postResume">Post Resume</button>
+      <button class="tab" data-tab="login">Login / Register</button>
+    </section>
+
+    <section id="notice" class="notice hidden"></section>
+
+    <section id="jobs" class="panel active"><div id="jobsGrid" class="grid"></div></section>
+    <section id="resumes" class="panel"><div id="resumesGrid" class="grid"></div></section>
+    <section id="matches" class="panel"><div id="matchesGrid" class="grid match-grid"></div></section>
+    <section id="dashboard" class="panel"><div id="dashboardContent" class="dashboard-wrap"></div></section>
+
+    <section id="postJob" class="panel">
+      <form id="jobForm" class="form-card">
+        <h2>Post a free job</h2>
+        <div class="two">
+          <label>Job title<input name="title" required placeholder="Electrical Counter Sales" /></label>
+          <label>Company<input name="company" required placeholder="ABC Electric Supply" /></label>
+        </div>
+        <div class="three">
+          <label>City<input name="city" required placeholder="Burnaby" /></label>
+          <label>Province<input name="province" required placeholder="BC" /></label>
+          <label>Job type<input name="jobType" placeholder="Full-time" /></label>
+        </div>
+        <label>Salary<input name="salary" placeholder="$22-$30/hour" /></label>
+        <label>Skills, separated by commas<input name="skills" required placeholder="electrical, sales, customer service, inventory" /></label>
+        <label>Description<textarea name="description" rows="5" placeholder="Job description, duties, requirements, schedule, experience needed..."></textarea></label>
+        <label>Contact email<input name="contactEmail" type="email" placeholder="hr@company.com" /></label>
+        <button type="submit">Publish Job</button>
+      </form>
+    </section>
+
+    <section id="postResume" class="panel">
+      <form id="resumeForm" class="form-card">
+        <h2>Post a free resume</h2>
+        <div class="two">
+          <label>Name<input name="candidateName" required placeholder="Jason L." /></label>
+          <label>Target position<input name="targetPosition" required placeholder="Counter Sales" /></label>
+        </div>
+        <div class="two">
+          <label>City<input name="city" required placeholder="Calgary" /></label>
+          <label>Province<input name="province" required placeholder="AB" /></label>
+        </div>
+        <label>Skills, separated by commas<input name="skills" required placeholder="warehouse, forklift, shipping" /></label>
+        <label>Summary<textarea name="summary" rows="5" placeholder="Short summary..."></textarea></label>
+        <label>Resume file: PDF/DOC/DOCX, max 5MB<input name="resumeFile" type="file" accept=".pdf,.doc,.docx" /></label>
+        <label>Contact email<input name="contactEmail" type="email" placeholder="me@email.com" /></label>
+        <button type="submit">Publish Resume</button>
+      </form>
+    </section>
+
+    <section id="login" class="panel">
+      <div class="auth-layout">
+        <form id="loginForm" class="form-card">
+          <h2>Login</h2>
+          <label>Email<input name="email" type="email" required /></label>
+          <label>Password<input name="password" type="password" required /></label>
+          <button type="submit">Login</button>
+          <p class="forgot-link"><a href="/forgot-password.html">Forgot password?</a></p>
+        </form>
+        <form id="registerForm" class="form-card">
+          <h2>Register</h2>
+          <label>Name<input name="name" required /></label>
+          <label>Company, optional<input name="company" /></label>
+          <label>Email<input name="email" type="email" required /></label>
+          <label>Password, at least 6 characters<input name="password" type="password" required minlength="6" /></label>
+          <label>Role<select name="role"><option value="employer">Employer</option><option value="jobseeker">Job Seeker</option></select></label>
+          <button type="submit">Create Account</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <div id="jobDetailModal" class="modal hidden">
+    <div class="modal-content detail-modal">
+      <button class="close-btn" onclick="closeJobDetail()">×</button>
+      <div id="jobDetailContent"></div>
+    </div>
+  </div>
+  <div id="applyModal" class="modal hidden"></div>
+
+  <footer class="footer">HireFree MVP · Local file database · Free to run · Upgrade later to Supabase/PostgreSQL</footer>
+  <script src="/app.js"></script>
+</body>
+</html>
