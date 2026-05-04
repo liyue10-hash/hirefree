@@ -7,71 +7,256 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <main class="container" style="padding-top:36px">
-    
-    <nav class="nav">
-      <div class="brand">
-        <img class="brand-logo" src="/logo-mascot.png" alt="HireFree logo">
-        <span>HireFree Admin Dashboard</span>
-      </div>
-      <button id="logoutBtn">Logout</button>
-    </nav>
+<main class="container" style="padding-top:36px">
+  <nav class="nav">
+    <div class="brand">
+      <img class="brand-logo" src="/logo-mascot.png" alt="HireFree logo">
+      <span>HireFree Admin Dashboard</span>
+    </div>
+    <button onclick="logout()">Logout</button>
+  </nav>
 
-    <section class="form-card" style="margin-top:28px">
-      <h2>Welcome, Admin</h2>
-      <p class="desc">
-        You are successfully logged into HireFree administration.
-      </p>
+  <section class="dashboard-summary" style="margin-top:28px">
+    <div class="summary-card"><b id="jobCount">0</b><span>Jobs</span></div>
+    <div class="summary-card"><b id="resumeCount">0</b><span>Resumes</span></div>
+    <div class="summary-card"><b id="applicationCount">0</b><span>Applications</span></div>
+    <div class="summary-card"><b id="userCount">0</b><span>Users</span></div>
+  </section>
 
-      <div style="margin-top:24px; display:grid; gap:16px;">
-        <a href="/" class="tab">Go to Main Website</a>
-        <a href="/admin.html" class="tab">Back to Admin Login</a>
-      </div>
+  <section class="tabs" style="margin-top:24px">
+    <button class="tab active" onclick="showTab('jobs')">Jobs</button>
+    <button class="tab" onclick="showTab('resumes')">Resumes</button>
+    <button class="tab" onclick="showTab('applications')">Applications</button>
+    <button class="tab" onclick="showTab('users')">Users</button>
+    <button class="tab" onclick="loadAdmin()">Refresh</button>
+    <a class="tab" href="/">Back to Website</a>
+  </section>
 
-      <section style="margin-top:32px">
-        <h3>Admin Controls</h3>
-        <ul>
-          <li>Review job postings</li>
-          <li>Manage resumes</li>
-          <li>Monitor employer accounts</li>
-          <li>Oversee platform activity</li>
-        </ul>
-      </section>
+  <div id="msg" class="notice hidden"></div>
 
-      <div id="msg" class="notice hidden" style="margin-top:20px"></div>
-    </section>
+  <section id="jobsTab" class="admin-tab"></section>
+  <section id="resumesTab" class="admin-tab hidden"></section>
+  <section id="applicationsTab" class="admin-tab hidden"></section>
+  <section id="usersTab" class="admin-tab hidden"></section>
+</main>
 
-  </main>
+<script>
+let data = { jobs: [], resumes: [], applications: [], users: [] };
 
-  <script>
-    async function api(url, options = {}) {
-      const r = await fetch(url, options);
-      let j = {};
-      try {
-        j = await r.json();
-      } catch (e) {}
-      if (!r.ok) {
-        throw new Error(j.error || 'Request failed');
-      }
-      return j;
+async function api(url, options = {}) {
+  const r = await fetch(url, options);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || "Request failed");
+  return j;
+}
+
+function showMsg(text, error = false) {
+  const msg = document.getElementById("msg");
+  msg.textContent = text;
+  msg.className = "notice" + (error ? " error" : "");
+  setTimeout(() => msg.classList.add("hidden"), 3000);
+}
+
+function esc(v) {
+  return String(v || "").replace(/[&<>"]/g, m => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;"
+  }[m]));
+}
+
+function showTab(name) {
+  document.querySelectorAll(".admin-tab").forEach(x => x.classList.add("hidden"));
+  document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+
+  document.getElementById(name + "Tab").classList.remove("hidden");
+
+  const buttons = Array.from(document.querySelectorAll(".tab"));
+  const btn = buttons.find(b => b.textContent.toLowerCase() === name);
+  if (btn) btn.classList.add("active");
+}
+
+async function loadAdmin() {
+  try {
+    data = await api("/api/admin/all");
+
+    document.getElementById("jobCount").textContent = data.jobs.length;
+    document.getElementById("resumeCount").textContent = data.resumes.length;
+    document.getElementById("applicationCount").textContent = data.applications.length;
+    document.getElementById("userCount").textContent = data.users.length;
+
+    renderJobs();
+    renderResumes();
+    renderApplications();
+    renderUsers();
+  } catch (err) {
+    showMsg(err.message, true);
+    if (err.message.includes("Admin login")) {
+      setTimeout(() => window.location.href = "/admin.html", 1000);
     }
+  }
+}
 
-    function showMsg(text, error = false) {
-      const msg = document.getElementById('msg');
-      msg.textContent = text;
-      msg.className = 'notice' + (error ? ' error' : '');
-    }
+function renderJobs() {
+  const box = document.getElementById("jobsTab");
 
-    document.getElementById('logoutBtn').addEventListener('click', async () => {
-      try {
-        await api('/api/admin-logout', {
-          method: 'POST'
-        });
-        window.location.href = '/admin.html';
-      } catch (err) {
-        showMsg(err.message, true);
-      }
-    });
-  </script>
+  if (!data.jobs.length) {
+    box.innerHTML = "<div class='card'>No jobs found.</div>";
+    return;
+  }
+
+  box.innerHTML = data.jobs.map(j => `
+    <article class="card" style="margin-bottom:16px">
+      <div class="card-top">
+        <h3>${esc(j.title)}</h3>
+        <span class="status-badge">${esc(j.status || "active")}</span>
+      </div>
+
+      <p><b>${esc(j.company)}</b> · ${esc(j.city)}, ${esc(j.province)} · ${esc(j.jobType)}</p>
+      <p>Salary: ${esc(j.salary || "")}</p>
+      <p>Contact: ${esc(j.contactEmail || "")}</p>
+      <p>${esc(j.description || "")}</p>
+
+      <div class="skills">
+        ${(j.skills || []).map(s => `<span class="pill">${esc(s)}</span>`).join("")}
+      </div>
+
+      <div class="dashboard-actions">
+        <button onclick="setJobStatus('${j.id}', 'active')">Active</button>
+        <button onclick="setJobStatus('${j.id}', 'hidden')">Hide</button>
+        <button onclick="setFeatured('${j.id}', ${!j.featured})">
+          ${j.featured ? "Unfeature" : "Featured"}
+        </button>
+        <button onclick="deleteJob('${j.id}')">Delete Job</button>
+      </div>
+    </article>
+  `).join("");
+}
+
+function renderResumes() {
+  const box = document.getElementById("resumesTab");
+
+  if (!data.resumes.length) {
+    box.innerHTML = "<div class='card'>No resumes found.</div>";
+    return;
+  }
+
+  box.innerHTML = data.resumes.map(r => `
+    <article class="card" style="margin-bottom:16px">
+      <div class="card-top">
+        <h3>${esc(r.candidateName)}</h3>
+        <span class="status-badge">${esc(r.status || "active")}</span>
+      </div>
+
+      <p><b>${esc(r.targetPosition)}</b> · ${esc(r.city)}, ${esc(r.province)}</p>
+      <p>Email: ${esc(r.contactEmail || "")}</p>
+      <p>${esc(r.summary || "")}</p>
+
+      <div class="skills">
+        ${(r.skills || []).map(s => `<span class="pill">${esc(s)}</span>`).join("")}
+      </div>
+
+      <div class="dashboard-actions">
+        ${r.fileUrl ? `<a class="tab active" href="${esc(r.fileUrl)}" target="_blank">Open File</a>` : ""}
+        <button onclick="deleteResume('${r.id}')">Delete Resume</button>
+      </div>
+    </article>
+  `).join("");
+}
+
+function renderApplications() {
+  const box = document.getElementById("applicationsTab");
+
+  if (!data.applications.length) {
+    box.innerHTML = "<div class='card'>No applications found.</div>";
+    return;
+  }
+
+  box.innerHTML = data.applications.map(a => `
+    <article class="card" style="margin-bottom:16px">
+      <div class="card-top">
+        <h3>${esc(a.name)}</h3>
+        <span class="status-badge">${esc(a.status || "new")}</span>
+      </div>
+
+      <p><b>Job:</b> ${esc(a.jobTitle || a.jobId || "")}</p>
+      <p><b>Email:</b> ${esc(a.email || "")}</p>
+      <p>${esc(a.message || "")}</p>
+
+      <div class="dashboard-actions">
+        ${a.resumeFileUrl ? `<a class="tab active" href="${esc(a.resumeFileUrl)}" target="_blank">Open Resume</a>` : ""}
+        <button onclick="deleteApplication('${a.id}')">Delete Application</button>
+      </div>
+    </article>
+  `).join("");
+}
+
+function renderUsers() {
+  const box = document.getElementById("usersTab");
+
+  if (!data.users.length) {
+    box.innerHTML = "<div class='card'>No users found.</div>";
+    return;
+  }
+
+  box.innerHTML = data.users.map(u => `
+    <article class="card" style="margin-bottom:16px">
+      <h3>${esc(u.name || "User")}</h3>
+      <p>Email: ${esc(u.email)}</p>
+      <p>Role: ${esc(u.role)}</p>
+      <p>Company: ${esc(u.company || "")}</p>
+    </article>
+  `).join("");
+}
+
+async function setJobStatus(id, status) {
+  await api(`/api/admin/job/${id}/status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status })
+  });
+  showMsg("Job updated.");
+  loadAdmin();
+}
+
+async function setFeatured(id, featured) {
+  await api(`/api/admin/job/${id}/featured`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ featured })
+  });
+  showMsg("Featured status updated.");
+  loadAdmin();
+}
+
+async function deleteJob(id) {
+  if (!confirm("Delete this job?")) return;
+  await api(`/api/admin/delete-job/${id}`, { method: "DELETE" });
+  showMsg("Job deleted.");
+  loadAdmin();
+}
+
+async function deleteResume(id) {
+  if (!confirm("Delete this resume?")) return;
+  await api(`/api/admin/delete-resume/${id}`, { method: "DELETE" });
+  showMsg("Resume deleted.");
+  loadAdmin();
+}
+
+async function deleteApplication(id) {
+  if (!confirm("Delete this application?")) return;
+  await api(`/api/admin/delete-application/${id}`, { method: "DELETE" });
+  showMsg("Application deleted.");
+  loadAdmin();
+}
+
+async function logout() {
+  await api("/api/admin-logout", { method: "POST" });
+  window.location.href = "/admin.html";
+}
+
+loadAdmin();
+</script>
 </body>
 </html>
