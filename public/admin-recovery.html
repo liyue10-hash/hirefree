@@ -1,155 +1,140 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>HireFree Admin Recovery</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css"/>
 </head>
 <body>
-  <main class="container" style="padding-top:36px">
-    <nav class="nav">
-      <div class="brand">
-        <img class="brand-logo" src="/logo-mascot.png" alt="HireFree logo" />
-        <span>HireFree Admin Recovery</span>
-      </div>
-      <a class="tab" href="/admin.html">Back to Admin Login</a>
-    </nav>
+<main class="container" style="padding-top:36px">
+  <nav class="nav">
+    <div class="brand">
+      <img class="brand-logo" src="/logo-mascot.png" alt="HireFree logo"/>
+      <span>HireFree Admin Recovery</span>
+    </div>
+    <a class="tab" href="/admin.html">Back to Admin Login</a>
+  </nav>
 
-    <section class="form-card" style="margin-top:28px">
-      <h2>Email Admin Password Recovery</h2>
+  <section class="form-card" style="margin-top:28px">
+    <h2>Email Admin Password Recovery</h2>
+    <p class="desc">
+      Enter your admin email to receive a verification code.
+    </p>
 
-      <p class="desc" id="recoveryInfo">
-        Enter your admin email to receive a verification code.
-      </p>
+    <label>
+      Admin Email
+      <input type="email" id="adminEmail" value="hr@ameleco.com"/>
+    </label>
 
-      <form id="requestForm" style="display:grid;gap:16px;margin-top:18px">
-        <label>
-          Admin Email
-          <input
-            type="email"
-            id="adminEmail"
-            required
-            placeholder="your admin email"
-          />
-        </label>
+    <button id="sendCodeBtn" onclick="sendCode()">
+      Send Email Verification Code
+    </button>
 
-        <button type="submit" id="sendCodeBtn">
-          Send Email Verification Code
-        </button>
-      </form>
+    <form id="verifyForm" class="hidden" style="display:grid;gap:16px;margin-top:18px">
+      <input type="hidden" id="requestId"/>
 
-      <form
-        id="verifyForm"
-        class="hidden"
-        style="display:grid;gap:16px;margin-top:24px"
-      >
-        <input type="hidden" id="requestId" />
+      <label>
+        Email Verification Code
+        <input
+          id="emailCode"
+          inputmode="numeric"
+          maxlength="6"
+          placeholder="6-digit code"
+          required
+        />
+      </label>
 
-        <label>
-          Email Verification Code
-          <input
-            type="text"
-            id="emailCode"
-            maxlength="6"
-            required
-            placeholder="6-digit code"
-          />
-        </label>
+      <label>
+        New Admin Password
+        <input
+          id="newPassword"
+          type="password"
+          minlength="8"
+          placeholder="Minimum 8 characters"
+          required
+        />
+      </label>
 
-        <label>
-          New Admin Password
-          <input
-            type="password"
-            id="newPassword"
-            minlength="8"
-            required
-            placeholder="Minimum 8 characters"
-          />
-        </label>
+      <button type="submit">Reset Admin Password</button>
+    </form>
 
-        <button type="submit">
-          Reset Admin Password
-        </button>
-      </form>
+    <div id="msg" class="notice hidden" style="margin-top:16px"></div>
 
-      <div id="msg" class="notice hidden" style="margin-top:18px"></div>
+    <p class="desc">
+      Recovery is secured through your registered admin email.
+    </p>
+  </section>
+</main>
 
-      <p class="desc" style="margin-top:18px">
-        Recovery is secured through your registered admin email.
-      </p>
-    </section>
-  </main>
+<script>
+async function api(url, opts = {}) {
+  const r = await fetch(url, opts);
+  const j = await r.json().catch(() => ({}));
 
-  <script>
-    async function api(url, options = {}) {
-      const response = await fetch(url, options);
-      const data = await response.json().catch(() => ({}));
+  if (!r.ok) {
+    throw new Error(j.error || "Request failed");
+  }
 
-      if (!response.ok) {
-        throw new Error(data.error || "Request failed");
-      }
+  return j;
+}
 
-      return data;
-    }
+function showMsg(text, error = false) {
+  const m = document.getElementById("msg");
+  m.className = "notice" + (error ? " error" : "");
+  m.textContent = text;
+}
 
-    function showMsg(text, isError = false) {
-      const box = document.getElementById("msg");
-      box.className = "notice" + (isError ? " error" : "");
-      box.textContent = text;
-    }
+async function sendCode() {
+  try {
+    const btn = document.getElementById("sendCodeBtn");
+    btn.disabled = true;
 
-    document.getElementById("requestForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
+    const email = document.getElementById("adminEmail").value;
 
-      const btn = document.getElementById("sendCodeBtn");
-      btn.disabled = true;
-
-      try {
-        const email = document.getElementById("adminEmail").value;
-
-        const result = await api("/api/admin-recovery/request", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ emailOnly: true, email })
-        });
-
-        document.getElementById("requestId").value = result.requestId;
-        document.getElementById("verifyForm").classList.remove("hidden");
-
-        showMsg("Verification code sent. Check your admin email.");
-      } catch (err) {
-        showMsg(err.message, true);
-      }
-
-      btn.disabled = false;
+    const r = await api("/api/admin-recovery/request", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email })
     });
 
-    document.getElementById("verifyForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
+    document.getElementById("requestId").value = r.requestId;
 
-      try {
-        await api("/api/admin-recovery/verify", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            requestId: document.getElementById("requestId").value,
-            emailCode: document.getElementById("emailCode").value,
-            newPassword: document.getElementById("newPassword").value,
-            emailOnly: true
-          })
-        });
+    document.getElementById("verifyForm").classList.remove("hidden");
 
-        showMsg("Admin password reset successfully. Return to Admin Login.");
-        e.target.reset();
-      } catch (err) {
-        showMsg(err.message, true);
-      }
+    showMsg("Verification code sent to admin email successfully.");
+
+  } catch (e) {
+    showMsg(e.message, true);
+  } finally {
+    document.getElementById("sendCodeBtn").disabled = false;
+  }
+}
+
+document.getElementById("verifyForm").addEventListener("submit", async e => {
+  e.preventDefault();
+
+  try {
+    await api("/api/admin-recovery/verify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        requestId: document.getElementById("requestId").value,
+        emailCode: document.getElementById("emailCode").value,
+        newPassword: document.getElementById("newPassword").value
+      })
     });
-  </script>
+
+    showMsg("Admin password reset successfully. Return to login.");
+
+  } catch (err) {
+    showMsg(err.message, true);
+  }
+});
+</script>
 </body>
 </html>
