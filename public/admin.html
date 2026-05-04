@@ -1,13 +1,89 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>HireFree Admin</title><link rel="stylesheet" href="/styles.css"/></head><body><main class="container" style="padding-top:36px"><nav class="nav"><div class="brand"><img class="brand-logo" src="/logo-mascot.png"/><span>HireFree Admin</span></div><a class="tab" href="/">Back to Website</a></nav><section id="adminLogin" class="form-card" style="margin-top:28px"><h2>Admin Login</h2><p class="desc">Authorized administrators only. Credentials are not displayed for security.</p><label>Email<input id="adminEmail" autocomplete="username" placeholder="Admin email"/></label><label>Password<input id="adminPassword" type="password" autocomplete="current-password" placeholder="Admin password"/></label><button onclick="adminLogin()">Login</button><p style="margin-top:12px"><a href="/admin-recovery.html">Forgot Admin Password?</a></p></section><section id="adminPanel" class="hidden" style="margin-top:28px"><div id="adminStats" class="dashboard-summary"></div><div class="tabs"><button class="tab active" onclick="showAdminTab('jobs',this)">Jobs</button><button class="tab" onclick="showAdminTab('resumes',this)">Resumes</button><button class="tab" onclick="showAdminTab('applications',this)">Applications</button><button class="tab" onclick="showAdminTab('users',this)">Users</button><button class="tab" onclick="showAdminTab('passwords',this)">Password Requests</button><button class="tab" onclick="loadAdmin()">Refresh</button><button class="tab" onclick="adminLogout()">Logout</button></div><div id="jobsTab" class="admin-tab"></div><div id="resumesTab" class="admin-tab hidden"></div><div id="applicationsTab" class="admin-tab hidden"></div><div id="usersTab" class="admin-tab hidden"></div><div id="passwordsTab" class="admin-tab hidden"></div></section></main><div id="adminModal" class="modal hidden"><div class="modal-content detail-modal"><button class="close-btn" onclick="closeAdminModal()">×</button><div id="adminModalContent"></div></div></div><script>
-let adminData={jobs:[],resumes:[],applications:[],users:[],passwordRequests:[],totals:{}}; const esc=v=>String(v||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); const pills=a=>(a||[]).map(s=>`<span class="pill">${esc(s)}</span>`).join(''); async function api(url,opts={}){const r=await fetch(url,opts);const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Request failed');return j;}
-async function adminLogin(){try{await api('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:adminEmail.value,password:adminPassword.value})});adminLogin.classList?.add;document.getElementById('adminLogin').classList.add('hidden');document.getElementById('adminPanel').classList.remove('hidden');loadAdmin();}catch(e){alert(e.message)}} async function adminLogout(){await api('/api/admin/logout',{method:'POST'});location.reload();}
-async function loadAdmin(){try{adminData=await api('/api/admin/overview');renderAdmin();}catch(e){alert(e.message)}} function showAdminTab(name,btn){document.querySelectorAll('.admin-tab').forEach(x=>x.classList.add('hidden'));document.getElementById(name+'Tab').classList.remove('hidden');document.querySelectorAll('.tabs .tab').forEach(x=>x.classList.remove('active'));if(btn)btn.classList.add('active');}
-function renderAdmin(){const t=adminData.totals||{};document.getElementById('adminStats').innerHTML=`<div class="summary-card"><b>${t.jobs||0}</b><span>Jobs</span></div><div class="summary-card"><b>${t.resumes||0}</b><span>Resumes</span></div><div class="summary-card"><b>${t.applications||0}</b><span>Applications</span></div><div class="summary-card"><b>${t.users||0}</b><span>Users</span></div>`;renderJobs();renderResumes();renderApps();renderUsers();renderPasswords();}
-function renderJobs(){jobsTab.innerHTML=(adminData.jobs||[]).map(j=>`<article class="card"><div class="card-top"><h3>${esc(j.title)}</h3><span class="status-badge">${esc(j.status)}</span></div><p><b>${esc(j.company)}</b> · ${esc(j.city)}, ${esc(j.province)} · ${esc(j.jobType)}</p><p>Salary: ${esc(j.salary)} · Contact: ${esc(j.contactEmail)}</p><p>${esc(j.description)}</p><div class="skills">${pills(j.skills)}</div><div class="dashboard-actions"><button onclick="jobStatus('${j.id}','active')">Active</button><button onclick="jobStatus('${j.id}','hidden')">Hide</button><button onclick="jobFeatured('${j.id}',${!j.featured})">${j.featured?'Unfeature':'Featured'}</button><button onclick="deleteJob('${j.id}')">Delete Job</button></div></article>`).join('')||'<div class="card">No jobs.</div>';}
-function renderResumes(){resumesTab.innerHTML=(adminData.resumes||[]).map(r=>`<article class="card"><div class="card-top"><h3>${esc(r.candidateName)}</h3><span class="status-badge">${esc(r.status||'active')}</span></div><p><b>${esc(r.targetPosition)}</b> · ${esc(r.city)}, ${esc(r.province)}</p><p>Email: ${esc(r.contactEmail)}</p><p>${esc(r.summary)}</p><div class="dashboard-actions"><button onclick="viewResume('${r.id}')">View Details</button>${r.fileUrl?`<button onclick="window.open('${esc(r.fileUrl)}','_blank')">Open File</button>`:''}<button onclick="deleteResume('${r.id}')">Delete Resume</button></div></article>`).join('')||'<div class="card">No resumes.</div>';}
-function renderApps(){applicationsTab.innerHTML=(adminData.applications||[]).map(a=>`<article class="card"><div class="card-top"><h3>${esc(a.name)}</h3><span class="status-badge">${esc(a.status||'new')}</span></div><p><b>Job:</b> ${esc(a.job?.title||a.jobId)}</p><p>Email: <a href="mailto:${esc(a.email)}">${esc(a.email)}</a></p><p>${esc(a.message)}</p><div class="dashboard-actions">${a.resumeFileUrl?`<button onclick="window.open('${esc(a.resumeFileUrl)}','_blank')">Open Resume</button>`:''}<button onclick="deleteApplication('${a.id}')">Delete Application</button></div></article>`).join('')||'<div class="card">No applications.</div>';}
-function renderUsers(){usersTab.innerHTML=(adminData.users||[]).map(u=>`<article class="card"><h3>${esc(u.name||u.email)}</h3><p>${esc(u.email)} · ${esc(u.role)}</p><p>Company: ${esc(u.company)}</p></article>`).join('')||'<div class="card">No users.</div>';}
-function renderPasswords(){passwordsTab.innerHTML=(adminData.passwordRequests||[]).map(r=>`<article class="card"><h3>${esc(r.email)}</h3><p>Status: ${esc(r.status)} · ${esc(r.createdAt)}</p><div class="two"><input id="pw_${r.id}" placeholder="New password, min 6 chars"/><button onclick="resetPassword('${r.email}','${r.id}')">Reset Password</button></div><div class="dashboard-actions"><button onclick="deletePasswordRequest('${r.id}')">Delete Request</button></div></article>`).join('')||'<div class="card">No password requests.</div>';}
-function viewResume(id){const r=adminData.resumes.find(x=>x.id===id); if(!r)return; adminModalContent.innerHTML=`<div class="detail-header"><h2>${esc(r.candidateName)}</h2><p>${esc(r.targetPosition)} · ${esc(r.city)}, ${esc(r.province)}</p></div><div class="detail-section"><h3>Email</h3><p><a href="mailto:${esc(r.contactEmail)}">${esc(r.contactEmail)}</a></p></div><div class="detail-section"><h3>Skills</h3><div class="skills">${pills(r.skills)}</div></div><div class="detail-section"><h3>Summary</h3><p>${esc(r.summary)}</p></div><div class="detail-section"><h3>Resume File</h3>${r.fileUrl?`<a href="${esc(r.fileUrl)}" target="_blank">Open Resume File</a>`:'No uploaded file'}</div>`;adminModal.classList.remove('hidden');}
-function closeAdminModal(){adminModal.classList.add('hidden')} async function jobStatus(id,status){await api('/api/admin/jobs/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});loadAdmin()} async function jobFeatured(id,featured){await api('/api/admin/jobs/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({featured})});loadAdmin()} async function deleteJob(id){if(confirm('Delete this job?')){await api('/api/admin/jobs/'+id,{method:'DELETE'});loadAdmin()}} async function deleteResume(id){if(confirm('Delete this resume?')){await api('/api/admin/resumes/'+id,{method:'DELETE'});loadAdmin()}} async function deleteApplication(id){if(confirm('Delete this application?')){await api('/api/admin/applications/'+id,{method:'DELETE'});loadAdmin()}} async function deletePasswordRequest(id){await api('/api/admin/password-requests/'+id,{method:'DELETE'});loadAdmin()} async function resetPassword(email,id){const p=document.getElementById('pw_'+id).value; await api('/api/admin/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:p})});alert('Password reset.');}
-</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HireFree Admin</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container" style="padding-top:40px">
+  <div class="brand" style="margin-bottom:24px">
+    <img class="brand-logo" src="/logo-mascot.png" alt="HireFree logo">
+    <span>HireFree Admin</span>
+  </div>
+
+  <section class="form-card">
+    <h2>Admin Login</h2>
+    <p class="desc">Authorized administrators only. Credentials are not displayed for security.</p>
+
+    <form id="adminLoginForm">
+      <label>Email
+        <input type="email" id="email" required placeholder="hr@ameleco.com">
+      </label>
+
+      <label>Password
+        <input type="password" id="password" required placeholder="Enter admin password">
+      </label>
+
+      <button type="submit">Login</button>
+    </form>
+
+    <p style="margin-top:16px">
+      <a href="/admin-recovery.html">Forgot Admin Password?</a>
+    </p>
+
+    <div id="msg" class="notice hidden" style="margin-top:16px"></div>
+  </section>
+</main>
+
+<script>
+async function api(url, options = {}) {
+  const r = await fetch(url, options);
+  let j = {};
+  try {
+    j = await r.json();
+  } catch(e) {}
+  if (!r.ok) {
+    throw new Error(j.error || 'Login failed');
+  }
+  return j;
+}
+
+function showMsg(text, error = false) {
+  const msg = document.getElementById('msg');
+  msg.textContent = text;
+  msg.className = 'notice' + (error ? ' error' : '');
+}
+
+document.getElementById('adminLoginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+
+  try {
+    const result = await api('/api/admin-login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        email,
+        password
+      })
+    });
+
+    if (result.success) {
+      window.location.href = '/admin-dashboard.html';
+    } else {
+      showMsg('Invalid credentials', true);
+    }
+
+  } catch(err) {
+    showMsg(err.message, true);
+  }
+});
+</script>
+</body>
+</html>
