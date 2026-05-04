@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HireFree Admin Dashboard</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="container" style="padding-top:36px">
+    
+    <nav class="nav">
+      <div class="brand">
+        <img class="brand-logo" src="/logo-mascot.png" alt="HireFree logo">
+        <span>HireFree Admin Dashboard</span>
+      </div>
+      <button id="logoutBtn">Logout</button>
+    </nav>
+
+    <section class="form-card" style="margin-top:28px">
+      <h2>Welcome, Admin</h2>
+      <p class="desc">
+        You are successfully logged into HireFree administration.
+      </p>
+
+      <div style="margin-top:24px; display:grid; gap:16px;">
+        <a href="/" class="tab">Go to Main Website</a>
+        <a href="/admin.html" class="tab">Back to Admin Login</a>
+      </div>
+
+      <section style="margin-top:32px">
+        <h3>Admin Controls</h3>
+        <ul>
+          <li>Review job postings</li>
+          <li>Manage resumes</li>
+          <li>Monitor employer accounts</li>
+          <li>Oversee platform activity</li>
+        </ul>
+      </section>
+
+      <div id="msg" class="notice hidden" style="margin-top:20px"></div>
+    </section>
+
+  </main>
+
+  <script>
+    async function api(url, options = {}) {
+      const r = await fetch(url, options);
+      let j = {};
+      try {
+        j = await r.json();
+      } catch (e) {}
+      if (!r.ok) {
+        throw new Error(j.error || 'Request failed');
+      }
+      return j;
+    }
+
+    function showMsg(text, error = false) {
+      const msg = document.getElementById('msg');
+      msg.textContent = text;
+      msg.className = 'notice' + (error ? ' error' : '');
+    }
+
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      try {
+        await api('/api/admin-logout', {
+          method: 'POST'
+        });
+        window.location.href = '/admin.html';
+      } catch (err) {
+        showMsg(err.message, true);
+      }
+    });
+  </script>
+</body>
+</html>
