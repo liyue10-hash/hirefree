@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HireFree Employer Dashboard</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container" style="padding-top:36px">
+  <nav class="nav">
+    <div class="brand"><img class="brand-logo" src="/logo-mascot.png" alt="HireFree logo"><span>HireFree Employer Dashboard</span></div>
+    <div style="display:flex;gap:10px;align-items:center"><a class="tab" href="/">Back to Website</a><button onclick="logout()">Logout</button></div>
+  </nav>
+
+  <section class="dashboard-summary" style="margin-top:28px">
+    <div class="summary-card"><b id="myJobCount">0</b><span>My Jobs</span></div>
+    <div class="summary-card"><b id="myApplicationCount">0</b><span>Applications</span></div>
+    <div class="summary-card"><b id="newApplicationCount">0</b><span>New</span></div>
+    <div class="summary-card"><b id="resumeSearchCount">0</b><span>Resume Results</span></div>
+  </section>
+
+  <section class="tabs" style="margin-top:24px">
+    <button class="tab active" onclick="showTab('jobs')">My Jobs</button>
+    <button class="tab" onclick="showTab('postJob')">Post Job</button>
+    <button class="tab" onclick="showTab('applications')">Applicants</button>
+    <button class="tab" onclick="showTab('searchResumes')">Search Resumes</button>
+    <button class="tab" onclick="showTab('premium')">Premium Visibility</button>
+    <button class="tab" onclick="loadDashboard()">Refresh</button>
+  </section>
+
+  <div id="msg" class="notice hidden"></div>
+  <section id="jobsTab" class="employer-tab"></section>
+
+  <section id="postJobTab" class="employer-tab hidden">
+    <form id="jobForm" class="form-card">
+      <h2>Post a free job</h2>
+      <div class="two">
+        <label>Job title<input name="title" required placeholder="Electrical Counter Sales"></label>
+        <label>Company<input name="company" required placeholder="Your company name"></label>
+      </div>
+      <div class="three">
+        <label>City<input name="city" required placeholder="Burnaby"></label>
+        <label>Province<input name="province" required placeholder="BC"></label>
+        <label>Job type<input name="jobType" placeholder="Full-time"></label>
+      </div>
+      <label>Salary<input name="salary" placeholder="$22-$30/hour"></label>
+      <label>Skills, separated by commas<input name="skills" required placeholder="electrical, sales, customer service"></label>
+      <label>Description<textarea name="description" rows="6" placeholder="Job duties, requirements, schedule, experience needed..."></textarea></label>
+      <label>Contact email<input name="contactEmail" type="email" placeholder="hr@company.com"></label>
+      <button type="submit">Publish Job</button>
+    </form>
+  </section>
+
+  <section id="applicationsTab" class="employer-tab hidden"></section>
+
+  <section id="searchResumesTab" class="employer-tab hidden">
+    <div class="form-card">
+      <h2>Search resumes</h2>
+      <p class="desc">Search candidates by skill, city, target position, or keyword.</p>
+      <div class="toolbar" style="grid-template-columns:1fr 180px 120px;margin:10px 0">
+        <input id="resumeQ" placeholder="electrical, forklift, sales, Burnaby...">
+        <input id="resumeCity" placeholder="City">
+        <button onclick="searchResumes()">Search</button>
+      </div>
+    </div>
+    <div id="resumeResults" style="margin-top:18px"></div>
+  </section>
+
+  <section id="premiumTab" class="employer-tab hidden">
+    <div class="grid">
+      <article class="card"><h3>Featured Job</h3><p class="desc">Move your job higher on HireFree search results.</p><h2>$29 / job</h2><button class="primary-btn" onclick="requestPremium('Featured Job')">Request Featured</button></article>
+      <article class="card"><h3>Urgent Hiring</h3><p class="desc">Highlight urgent roles with an eye-catching badge.</p><h2>$99 / job</h2><button class="primary-btn" onclick="requestPremium('Urgent Hiring')">Request Urgent Hiring</button></article>
+      <article class="card"><h3>Resume Access</h3><p class="desc">Search and contact matching candidates faster.</p><h2>$199 / month</h2><button class="primary-btn" onclick="requestPremium('Resume Access')">Request Resume Access</button></article>
+    </div>
+    <div class="notice" style="margin-top:20px">MVP payment note: this version creates a premium request by email. Online payment can be added later with Stripe.</div>
+  </section>
+</main>
+
+<script>
+let dashboard = { jobs: [], applications: [], totals: {} };
+
+async function api(url, options = {}) {
+  const r = await fetch(url, options);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || "Request failed");
+  return j;
+}
+function esc(v) { return String(v || "").replace(/[&<>"]/g, m => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[m])); }
+function skills(arr) { return (arr || []).map(s => `<span class="pill">${esc(s)}</span>`).join(""); }
+function showMsg(text, error = false) {
+  const msg = document.getElementById("msg");
+  msg.textContent = text;
+  msg.className = "notice" + (error ? " error" : "");
+  setTimeout(() => msg.classList.add("hidden"), 3500);
+}
+function showTab(name) {
+  document.querySelectorAll(".employer-tab").forEach(x => x.classList.add("hidden"));
+  document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+  document.getElementById(name + "Tab").classList.remove("hidden");
+  const btn = Array.from(document.querySelectorAll(".tab")).find(b => b.textContent.replace(/\s/g,"").toLowerCase().startsWith(name.toLowerCase()));
+  if (btn) btn.classList.add("active");
+}
+async function loadDashboard() {
+  try {
+    dashboard = await api("/api/employer-dashboard");
+    document.getElementById("myJobCount").textContent = dashboard.totals?.jobs || 0;
+    document.getElementById("myApplicationCount").textContent = dashboard.totals?.applications || 0;
+    document.getElementById("newApplicationCount").textContent = dashboard.totals?.newApplications || 0;
+    renderJobs(); renderApplications();
+  } catch (err) {
+    showMsg(err.message, true);
+    setTimeout(() => window.location.href = "/#login", 1200);
+  }
+}
+function renderJobs() {
+  const box = document.getElementById("jobsTab");
+  if (!dashboard.jobs || !dashboard.jobs.length) { box.innerHTML = `<div class="card"><h3>No jobs yet</h3><p>Post your first job from the Post Job tab.</p></div>`; return; }
+  box.innerHTML = dashboard.jobs.map(j => `
+    <article class="card" style="margin-bottom:16px">
+      <div class="card-top"><h3>${esc(j.title)}</h3><span class="status-badge">${j.featured ? "featured" : esc(j.status || "active")}</span></div>
+      <p><b>${esc(j.company)}</b> · ${esc(j.city)}, ${esc(j.province)} · ${esc(j.jobType || "")}</p>
+      <p>Salary: ${esc(j.salary || "")}</p><p>${esc(j.description || "")}</p><div class="skills">${skills(j.skills)}</div>
+      <div class="dashboard-actions"><button onclick="requestPremium('Featured Job for ${esc(j.title).replace(/'/g,"")}')">Buy Featured</button></div>
+    </article>`).join("");
+}
+function renderApplications() {
+  const box = document.getElementById("applicationsTab");
+  if (!dashboard.applications || !dashboard.applications.length) { box.innerHTML = `<div class="card">No applicants yet.</div>`; return; }
+  box.innerHTML = dashboard.applications.map(a => `
+    <article class="card" style="margin-bottom:16px">
+      <div class="card-top"><h3>${esc(a.name)}</h3><span class="status-badge">${esc(a.status || "new")}</span></div>
+      <p><b>Applied for:</b> ${esc(a.job?.title || a.jobTitle || "")}</p><p><b>Email:</b> <a href="mailto:${esc(a.email)}">${esc(a.email)}</a></p><p>${esc(a.message || "")}</p>
+      <div class="dashboard-actions">${a.resumeFileUrl ? `<a class="tab active" href="${esc(a.resumeFileUrl)}" target="_blank">Open Resume</a>` : ""}<button onclick="updateApplication('${esc(a.id)}','reviewed')">Reviewed</button><button onclick="updateApplication('${esc(a.id)}','shortlisted')">Shortlist</button><button onclick="updateApplication('${esc(a.id)}','rejected')">Reject</button></div>
+    </article>`).join("");
+}
+async function updateApplication(id, status) {
+  await api(`/api/applications/${id}/status`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ status }) });
+  showMsg("Applicant status updated."); loadDashboard();
+}
+document.getElementById("jobForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  try {
+    await api("/api/jobs", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(Object.fromEntries(new FormData(e.target).entries())) });
+    e.target.reset(); showMsg("Job published."); showTab("jobs"); loadDashboard();
+  } catch (err) { showMsg(err.message, true); }
+});
+async function searchResumes() {
+  try {
+    const q = encodeURIComponent(document.getElementById("resumeQ").value.trim());
+    const city = encodeURIComponent(document.getElementById("resumeCity").value.trim());
+    const result = await api(`/api/resumes?q=${q}&city=${city}`);
+    const resumes = result.resumes || [];
+    document.getElementById("resumeSearchCount").textContent = resumes.length;
+    const box = document.getElementById("resumeResults");
+    if (!resumes.length) { box.innerHTML = `<div class="card">No matching resumes found.</div>`; return; }
+    box.innerHTML = resumes.map(r => `
+      <article class="card" style="margin-bottom:16px">
+        <h3>${esc(r.candidateName)}</h3><p><b>${esc(r.targetPosition)}</b> · ${esc(r.city)}, ${esc(r.province)}</p><p>Email: ${esc(r.contactEmail || "")}</p><p>${esc(r.summary || "")}</p><div class="skills">${skills(r.skills)}</div>
+        <div class="dashboard-actions">${r.fileUrl ? `<a class="tab active" href="${esc(r.fileUrl)}" target="_blank">Open Resume File</a>` : ""}${r.contactEmail && !String(r.contactEmail).includes("Login") ? `<a class="tab" href="mailto:${esc(r.contactEmail)}">Email Candidate</a>` : ""}</div>
+      </article>`).join("");
+  } catch (err) { showMsg(err.message, true); }
+}
+function requestPremium(plan) {
+  const subject = encodeURIComponent("HireFree Premium Request: " + plan);
+  const body = encodeURIComponent("Hello HireFree,\n\nWe would like to request premium visibility:\n\nPlan: " + plan + "\nCompany:\nContact:\nJob title:\n\nThank you.");
+  window.location.href = `mailto:hr@ameleco.com?subject=${subject}&body=${body}`;
+}
+async function logout() {
+  await api("/api/logout", { method: "POST" });
+  window.location.href = "/";
+}
+loadDashboard();
+</script>
+</body>
+</html>
