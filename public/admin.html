@@ -74,7 +74,7 @@ document.getElementById('adminLoginForm').addEventListener('submit', async (e) =
       })
     });
 
-    if (result.success) {
+    if (result.ok) {
       window.location.href = '/admin-dashboard.html';
     } else {
       showMsg('Invalid credentials', true);
